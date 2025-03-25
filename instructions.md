@@ -115,4 +115,4 @@ You can test the API using Postman. The following routes are available:
 
 ## 8. Author
 
-This project is part of the **Movie Ticket Booking System - Popcorn Palace** backend assignment.
+This project is part of the **Movie Ticket Booking System - Popcorn Palace** backend assignment for AT&T.
