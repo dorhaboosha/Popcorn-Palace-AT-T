@@ -16,126 +16,114 @@ export class MovieRepository {
 
     constructor(dataSource: DataSource) {
         this.dataSource = dataSource;
-        console.log('MovieRepository loaded');
     }
 
     /**
-    * Inserts a new movie into the database.
-    * @param newMovie - A movie object without an ID.
-    * @throws InternalServerErrorException if the insert query fails.
+    * Retrieves all movies from the database.
+    * @returns Promise<Movie[]>
+    */
+    async getAllMovies(): Promise<Movie[]> {
+        try {
+            return await this.dataSource.query('SELECT * FROM movies');
+        } 
+        catch (error) {
+            console.error('Error fetching all movies:', error);
+            throw new InternalServerErrorException('Error fetching all movies', error);
+        }
+    }
+
+    /**
+    * Finds a movie by its title (case-insensitive).
+    * @param title - Movie title to search for
+    * @returns Promise<Movie | null>
+    */
+    async findMovieByTitle(title: string): Promise<Movie | null> {
+        try {
+            const result = await this.dataSource.query( 'SELECT * FROM movies WHERE LOWER(title) = LOWER($1)', [title.trim()]);
+            
+            return result.length > 0 ? result[0] : null;
+        } 
+        catch (error) {
+            console.error('Error fetching movie by title:', error);
+            throw new InternalServerErrorException('Error fetching movie by title', error);
+        }
+    }
+
+    /**
+    * Creates a new movie in the database.
+    * @param newMovie - Movie object to insert
     */
     async addNewMovie(newMovie: Omit<Movie, 'id'>): Promise<void> {
-        const { title, genre, duration, rating, release_year } = newMovie;
+        const { title, genre, duration, rating, releaseYear } = newMovie;
+        try {
+            await this.dataSource.query( `INSERT INTO movies (title, genre, duration, rating, release_year) 
+                                            VALUES ($1, $2, $3, $4, $5)`,
+                                            [title.trim(), genre.trim(), duration, rating, releaseYear]);
+        } 
+        catch (error) {
+            console.error('Error adding new movie:', error);
+            throw new InternalServerErrorException('Failed to add movie to the database.', error);
+        }
+    }
+
+    /**
+    * Updates a movie's information using its title.
+    * @param movieTitle - Existing movie title to search by
+    * @param movie - Fields to update
+    */
+    async updateMovieInfo(movieTitle: string, movie: Partial<Movie>): Promise<void> {
+        const { title, genre, duration, rating, releaseYear } = movie;
         try {
             await this.dataSource.query(
-                `INSERT INTO movie (title, genre, duration, rating, release_year) Values ($1, $2, $3, $4, $5)`,
-                [title, genre, duration, rating, release_year]);
-        }
+                `UPDATE movies 
+                SET
+                title = COALESCE($1, title), genre = COALESCE($2, genre), duration = COALESCE($3, duration),
+                rating = COALESCE($4, rating), release_year = COALESCE($5, release_year)
+                WHERE LOWER(title) = LOWER($6)`,
+                [title?.trim() ?? null, genre?.trim() ?? null, duration ?? null,
+                     rating ?? null, releaseYear ?? null, movieTitle.trim()]);
+        } 
         catch (error) {
-            console.error('DB Error on addNewMovie:', error);
-            throw new InternalServerErrorException('Failed to add movie to the database.');
+            console.error('Error updating movie:', error);
+            throw new InternalServerErrorException('Failed to update the movie information.', error);
         }
     }
 
     /**
-    * Updates an existing movie record by ID.
-    * @param id - Movie ID to update.
-    * @param movie - Partial movie object containing updated fields.
-    * @throws InternalServerErrorException if the update query fails.
+    * Deletes a movie by its title.
+    * @param title - The title of the movie to delete.
     */
-    async updateMovieInfo(id: number, movie: Partial<Movie>): Promise<void> {
-        const { title, genre, duration, rating, release_year } = movie;
-        try {    
-            await this.dataSource.query(
-                `UPDATE movie
-                SET title = $1, genre = $2, duration = $3, rating = $4, release_year = $5
-                WHERE id = $6`,
-                [title, genre, duration, rating, release_year, id]);
-        }
-        catch (error) {
-            console.error('DB Error on updateMovieInfo:', error);
-            throw new InternalServerErrorException('Failed to update the movie information.');
-            }
-    }
-
-    /**
-    * Deletes a movie by its ID.
-    * @param id - The ID of the movie to delete.
-    * @throws InternalServerErrorException if the delete query fails.
-    */
-    async deleteMovie(id: number): Promise<void> {
+    async deleteMovie(title: string): Promise<void> {
         try {
-            await this.dataSource.query(
-                `DELETE FROM movie WHERE id = $1`,
-                [id]);
-        }
+            await this.dataSource.query(`DELETE FROM movies WHERE LOWER(title) = LOWER($1)`, [title.trim()]);
+        } 
         catch (error) {
-            console.error('DB Error on deleteMovie:', error);
-            throw new InternalServerErrorException('Failed to delete the movie.');
+            console.error('Error deleting movie:', error);
+            throw new InternalServerErrorException('Failed to delete the movie.', error);
         }
     }
 
-    /**
-    * Fetches all movies from the database.
-    * @returns An array of Movie objects.
-    * @throws InternalServerErrorException if the query fails.
-    */
-    async fetchAllMovies(): Promise<Movie[]> {
-        try {
-            return await this.dataSource.query(`SELECT * FROM movie`);
-        }
-        catch (error) {
-            console.error('DB Error on fetchAllMovies:', error);
-            throw new InternalServerErrorException('Failed to get all the movies in the database.');
-        }
-    }
-
-    /**
+        /**
     * Fetches a movie by its ID.
     * @param id - The ID of the movie.
     * @returns The movie object or null if not found.
     * @throws InternalServerErrorException if the query fails.
     */
-    async fetchMovieById(id: number): Promise<Movie | null> {
-        try {
-            const result = await this.dataSource.query(
-                `SELECT * FROM movie WHERE id = $1`,
-                [id]);
-        
-            if (result.length === 0) {
-                return null;
+        async fetchMovieById(id: number): Promise<Movie | null> {
+            try {
+                const result = await this.dataSource.query(
+                    `SELECT * FROM movies WHERE id = $1`,
+                    [id]);
+            
+                if (result.length === 0) {
+                    return null;
+                }
+    
+                return result[0];
             }
-
-            return result[0];
-        }
-        catch(error) {
-            console.error('DB Error on fetchMovieById:', error);
-            throw new InternalServerErrorException('Failed to get the movie by his id.');
-        }
-    }
-
-    /**
-    * Fetches a movie by its title and release year.
-    * @param title - The movie's title (assumed to be already trimmed and lowercased).
-    * @param release_year - The movie's release year.
-    * @returns The matching movie or null if not found.
-    * @throws InternalServerErrorException if the query fails.
-    */
-    async fetchMovieByTitleAndReleaseYear(title: string, release_year: number): Promise<Movie | null> {
-        try {
-            const result = await this.dataSource.query(
-                `SELECT * FROM movie WHERE title = $1 AND release_year = $2`,
-                [title, release_year]);
-        
-            if (result.length === 0) {
-                return null;
+            catch(error) {
+                console.error('DB Error on fetchMovieById:', error);
+                throw new InternalServerErrorException('Failed to get the movie by his id.');
             }
-
-            return result[0];
-        }
-        catch(error) {
-            console.error('DB Error on fetchMovieByTitleAndReleaseYear:', error);
-            throw new InternalServerErrorException('Failed to get the movie by title and release year.');
-        }
     }
 }

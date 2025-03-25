@@ -1,236 +1,155 @@
 /**
-* showTime.service.ts
-*
-* This service handles all business logic related to movie showtimes.
-* It validates showtime creation and updates based on movie duration,
-* overlapping times, and data integrity. It communicates with the
-* 'ShowTimeRepository' for DB operations and relies on 'MovieRepository'
-* to fetch movie details required for validation.
-*/
+ * showTime.service.ts
+ *
+ * This service handles business logic for creating, updating, fetching, and deleting movie showtimes.
+ * It validates against movie duration, prevents overlaps, and ensures time integrity.
+ */
 
 import { Injectable, BadRequestException, NotFoundException, Inject } from "@nestjs/common";
 import { ShowTimeRepository } from "./showTime.repository";
-import { MovieRepository } from "src/Movie/movie.repository";
-import { CreateShowTimeDto } from "./create-showTime.dto";
-import { UpdateShowTimeDto } from "./update-showTime.dto";
-import { Movie } from "src/Movie/movie.entity";
+import { MovieRepository } from "../movie/movie.repository";
+import { ShowTimeDto } from "./showTime.dto";
 import { ShowTime } from "./showTime.entity";
-
 
 @Injectable()
 export class ShowTimeService {
     constructor(
-        @Inject('ShowTimeRepository') private readonly showTimeRepository: ShowTimeRepository, 
-        @Inject('MovieRepository') private readonly movieRepository: MovieRepository) {}
+        @Inject('ShowTimeRepository') private readonly showTimeRepository: ShowTimeRepository,
+        @Inject('MovieRepository') private readonly movieRepository: MovieRepository
+    ) {}
 
     /**
-    * Calculates duration in minutes between two times (HH:mm).
-    * @param startTime - Start time (HH:mm format)
-    * @param endTime - End time (HH:mm format)
-    * @returns Duration in minutes
-    */
-    private calculateDuration(startTime: string, endTime: string): number {
-        const [startHour, startMinute] = startTime.split(':').map(Number);
-        const [endHour, endMinute] = endTime.split(':').map(Number);
-
-        const startTtoal = startHour * 60 + startMinute;
-        const endTotal = endHour * 60 + endMinute;
-
-        return endTotal - startTtoal;
+     * Calculates the time difference in minutes between two ISO date strings.
+     */
+    private calculateDuration(start: string, end: string): number {
+        const startDate = new Date(start);
+        const endDate = new Date(end);
+        return (endDate.getTime() - startDate.getTime()) / (1000 * 60);
     }
 
     /**
-    * Adds a new showtime after performing all validations:
-    * - Movie exists
-    * - Valid time logic
-    * - Duration matches movie
-    * - No overlapping showtime
-    * - No exact duplicate
-    * 
-    * @param newShowTime - The showtime data from client
-    * @returns Promise<void>
-    * @throws BadRequestException, NotFoundException
-    */
-    async addNewShowTime(newShowTime: CreateShowTimeDto): Promise<void> {
-        const {movie_title, movie_release_year, theater, start_time, end_time, price} = newShowTime;
+     * Adds a new showtime after validating:
+     * - Valid movie ID
+     * - Valid time range
+     * - Duration matches movie
+     * - No overlapping showtime
+     * 
+     * @param data - New showtime input
+     * @returns The newly created showtime
+     */
+    async addNewShowTime(data: ShowTimeDto): Promise<ShowTime> {
+        const { movieId, theater, startTime, endTime, price } = data;
 
         if (price <= 0) {
             throw new BadRequestException("Price must be greater than 0.");
         }
 
-        const movieName = movie_title.trim().toLowerCase();
-        const theaterName = theater.trim().toLowerCase();
-
-        const movie = await this.movieRepository.fetchMovieByTitleAndReleaseYear(movieName, movie_release_year);
-
+        const movie = await this.movieRepository.fetchMovieById(movieId);
         if (!movie) {
-            throw new NotFoundException(`Movie with title "${movieName}" and release year "${movie_release_year}" not found.`);
+            throw new NotFoundException(`Movie with ID ${movieId} not found.`);
         }
 
-        const movie_id = movie.id;
-        const movieDuration = movie.duration;
-
-        if (start_time === end_time) {
-            throw new BadRequestException("Start time and end time cannot be the same.");
-        }
-
-        if (start_time > end_time) {
+        if (new Date(startTime) >= new Date(endTime)) {
             throw new BadRequestException("End time must be after start time.");
         }
 
-        const showTimeDuration = this.calculateDuration(start_time, end_time);
-        if (showTimeDuration !== movieDuration) {
-            throw new BadRequestException(
-                `Showtime duration must match movie duration (${movieDuration} minutes). You provided ${showTimeDuration} minutes.`);
+        const actualDuration = this.calculateDuration(startTime, endTime);
+        if (actualDuration !== movie.duration) {
+            throw new BadRequestException(`Showtime duration must match movie duration (${movie.duration} minutes). You provided ${actualDuration} minutes.`);
         }
 
-        const hasOverLap = await this.showTimeRepository.hasOverLappingShowTime(theaterName, start_time, end_time);
-        if (hasOverLap) {
-            throw new BadRequestException("Overlapping showtime exists for this theater.");
+        const overlap = await this.showTimeRepository.hasOverlappingShowTime(theater.trim(), startTime, endTime);
+        if (overlap) {
+            throw new BadRequestException("An overlapping showtime already exists in this theater.");
         }
 
-        const existingShowTime = await this.showTimeRepository.findExactShowTime({
-            movie_id, theater: theaterName, start_time, end_time, price
-        });
-        if (existingShowTime) {
-            throw new BadRequestException("Showtime with the same details already exists.");
-        }
+        const newShowTime: Omit<ShowTime, 'id'> = {
+            movieId,
+            theater: theater.trim(),
+            startTime,
+            endTime,
+            price
+        };
 
-        await this.showTimeRepository.addNewShowTime({movie_id, theater: theaterName, start_time, end_time, price});
+        return await this.showTimeRepository.addNewShowTime(newShowTime);
     }
 
     /**
-    * Validates that both title and release year are present for movie lookup.
-    * 
-    * @param updatesShowTime - Partial showtime update data
-    * @returns Movie if found, null otherwise
-    * @throws BadRequestException, NotFoundException
-    */
-    private async validateMovie(updatesShowTime: UpdateShowTimeDto): Promise<Movie | null> {
-        if (updatesShowTime.movie_title && updatesShowTime.movie_release_year) {
-            const movieName = updatesShowTime.movie_title.trim().toLowerCase();
-
-            const movie = await this.movieRepository.fetchMovieByTitleAndReleaseYear(movieName, updatesShowTime.movie_release_year);
-            if (!movie) {
-                throw new NotFoundException(`Movie with title "${movieName}" and release year "${updatesShowTime.movie_release_year}" not found.`);
-            }
-
-            return movie;
-        }
-
-        else if (updatesShowTime.movie_title || updatesShowTime.movie_release_year) {
-            throw new BadRequestException("To update the movie, both title and release year must be provided.");
-        }
-
-        return null;
-    }
-
-    /**
-    * Merges the existing showtime with updates and optional new movie ID.
-    * 
-    * @param existingShowTime - Current DB showtime
-    * @param updatesShowTime - Incoming update fields
-    * @param movie_id - New or existing movie ID
-    * @returns Updated showtime object
-    */
-    private createUpdatedShowTime(existingShowTime: ShowTime, updatesShowTime: UpdateShowTimeDto, movie_id: number): ShowTime {
-        return {
-            ...existingShowTime, movie_id, theater: updatesShowTime.theater?.trim().toLowerCase() ?? existingShowTime.theater,
-            start_time: updatesShowTime.start_time ?? existingShowTime.start_time, end_time: updatesShowTime.end_time ?? existingShowTime.end_time,
-            price: updatesShowTime.price ?? existingShowTime.price};
-    }
-
-    /**
-    * Validates logical consistency of showtime time range and duration.
-    * 
-    * @param start - Start time (HH:mm)
-    * @param end - End time (HH:mm)
-    * @param expectedDuration - Movie duration in minutes
-    * @throws BadRequestException
-    */
-    private validateTimeLogic(start: string, end: string, expectedDuration: number): void {
-        if (start === end) {
-            throw new BadRequestException("Start time and end time cannot be the same.");
-        }
-
-        if (start > end) {
-            throw new BadRequestException("End time must be after start time.");
-        }
-
-        const actualDuration = this.calculateDuration(start, end);
-        if (actualDuration !== expectedDuration) {
-            throw new BadRequestException(`Showtime duration must match movie duration (${expectedDuration} minutes). You provided ${actualDuration} minutes.`);
-        }
-    }
-
-    /**
-    * Updates an existing showtime after validating:
-    * - ID validity
-    * - Movie updates (if any)
-    * - Time/duration logic
-    * - Overlap detection (if time or theater changed)
-    * 
-    * @param id - ID of showtime to update
-    * @param updatesShowTime - Fields to update
-    * @returns Promise<void>
-    * @throws BadRequestException, NotFoundException
-    */
-    async updateShowTimeInfo(id: number, updatesShowTime: UpdateShowTimeDto): Promise<void> {
+     * Updates a showtime after performing all relevant validations.
+     * 
+     * @param id - Showtime ID to update
+     * @param dto - Fields to update
+     */
+    async updateShowTimeInfo(id: number, dto: ShowTimeDto): Promise<void> {
         if (!id || id <= 0) {
             throw new BadRequestException("Invalid showtime ID.");
         }
 
-        const existingShowTime = await this.showTimeRepository.fetchShowTimeById(id);
-        if (!existingShowTime) {
-          throw new NotFoundException(`Showtime with ID ${id} not found.`);
+        const existing = await this.showTimeRepository.fetchShowTimeById(id);
+        if (!existing) {
+            throw new NotFoundException(`Showtime with ID ${id} not found.`);
         }
 
-        const movie = await this.validateMovie(updatesShowTime);
-        const movieId = movie ? movie.id : existingShowTime.movie_id;
-        const duration = movie ? movie.duration : (await this.movieRepository.fetchMovieById(movieId))?.duration;
+        const updated: ShowTime = {
+            ...existing,
+            movieId: dto.movieId ?? existing.movieId,
+            theater: dto.theater?.trim() ?? existing.theater,
+            startTime: dto.startTime ?? existing.startTime,
+            endTime: dto.endTime ?? existing.endTime,
+            price: dto.price ?? existing.price,
+            id
+        };
 
-        if (!duration) {
-            throw new NotFoundException("Movie duration could not be determined.");
-        }
-
-        const updtaedShowTime = this.createUpdatedShowTime(existingShowTime, updatesShowTime, movieId);
-
-        if(updatesShowTime.price !== undefined && updatesShowTime.price <= 0) {
+        if (updated.price <= 0) {
             throw new BadRequestException("Price must be greater than 0.");
         }
 
-        this.validateTimeLogic(updtaedShowTime.start_time, updtaedShowTime.end_time, duration);
+        const movie = await this.movieRepository.fetchMovieById(updated.movieId);
+        if (!movie) {
+            throw new NotFoundException(`Movie with ID ${updated.movieId} not found.`);
+        }
 
-        const changedTime = updtaedShowTime.start_time !== existingShowTime.start_time ||
-                                updtaedShowTime.end_time !== existingShowTime.end_time ||
-                                updtaedShowTime.theater !== existingShowTime.theater;
+        if (new Date(updated.startTime) >= new Date(updated.endTime)) {
+            throw new BadRequestException("End time must be after start time.");
+        }
+
+        const actualDuration = this.calculateDuration(updated.startTime, updated.endTime);
+        if (actualDuration !== movie.duration) {
+            throw new BadRequestException(`Showtime duration must match movie duration (${movie.duration} minutes). You provided ${actualDuration} minutes.`);
+        }
+
+        const changedTimeOrTheater =
+            updated.startTime !== existing.startTime ||
+            updated.endTime !== existing.endTime ||
+            updated.theater !== existing.theater;
+
+        if (changedTimeOrTheater) {
+            const overlap = await this.showTimeRepository.hasOverlappingShowTime(
+                updated.theater,
+                updated.startTime,
+                updated.endTime,
+                id
+            );
         
-        if (changedTime) {
-            const hasOverLap = await this.showTimeRepository.hasOverLappingShowTime(updtaedShowTime.theater,
-                updtaedShowTime.start_time, updtaedShowTime.end_time);
-            
-            if (hasOverLap) {
+
+            if (overlap) {
                 throw new BadRequestException("Updated showtime overlaps with another showtime in this theater.");
             }
         }
 
-        await this.showTimeRepository.updateShowTimeInfo(id, updtaedShowTime);
+        await this.showTimeRepository.updateShowTimeInfo(id, updated);
     }
-    
+
     /**
-    * Deletes a showtime if it exists.
-    * 
-    * @param id - ID of the showtime to delete
-    * @returns Promise<void>
-    * @throws BadRequestException, NotFoundException
-    */
+     * Deletes a showtime by its ID.
+     */
     async deleteShowTime(id: number): Promise<void> {
         if (!id || id <= 0) {
             throw new BadRequestException("Invalid showtime ID.");
         }
 
-        const existingShowTime = await this.showTimeRepository.fetchShowTimeById(id);
-        if (!existingShowTime) {
+        const existing = await this.showTimeRepository.fetchShowTimeById(id);
+        if (!existing) {
             throw new NotFoundException(`Showtime with ID ${id} not found.`);
         }
 
@@ -238,13 +157,9 @@ export class ShowTimeService {
     }
 
     /**
-    * Fetches a showtime by its ID and includes the associated movie details.
-    * 
-    * @param id - Showtime ID
-    * @returns A full showtime object with movie data
-    * @throws BadRequestException, NotFoundException
-    */
-    async fetchShowTimeById(id: number): Promise<any> {
+     * Fetches a showtime by its ID.
+     */
+    async fetchShowTimeById(id: number): Promise<ShowTime> {
         if (!id || id <= 0) {
             throw new BadRequestException("Invalid showtime ID.");
         }
@@ -254,13 +169,6 @@ export class ShowTimeService {
             throw new NotFoundException(`Showtime with ID ${id} not found.`);
         }
 
-        const movie = await this.movieRepository.fetchMovieById(showtime.movie_id);
-        if (!movie) {
-            throw new NotFoundException(`Movie with ID ${showtime.movie_id} not found.`);
-        }
-
-        return {id: showtime.id, theater: showtime.theater, movie, start_time: showtime.start_time,
-                end_time: showtime.end_time, price: showtime.price};
+        return showtime;
     }
-
 }

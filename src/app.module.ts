@@ -13,8 +13,8 @@ import { MovieModule } from './movie/movie.module';
 import { ShowTimeModule } from './showTime/showTime.module';
 import { Movie } from './Movie/movie.entity';
 import { ShowTime } from './showTime/showTime.entity';
-import { Ticket } from './ticket/ticket.entity';
-import { TicketModule } from './ticket/ticket.module';
+import { Booking } from './booking/booking.entity';
+import { BookingModule } from './booking/booking.module';
 
 @Module({
     /**
@@ -32,9 +32,9 @@ import { TicketModule } from './ticket/ticket.module';
       username: "popcorn_palace_dor",
       password: "popcorn_palace_dor",
       database: "popcorn_palace_dor",
-      entities: [Movie, ShowTime, Ticket],
+      entities: [Movie, ShowTime, Booking],
       synchronize: true
     }),
-    MovieModule, ShowTimeModule, TicketModule]
+    MovieModule, ShowTimeModule, BookingModule]
 })
 export class AppModule {}

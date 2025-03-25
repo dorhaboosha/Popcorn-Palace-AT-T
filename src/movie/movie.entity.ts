@@ -8,7 +8,7 @@
 
 import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
 
-@Entity()
+@Entity('movies')
 export class Movie {
     
     /**
@@ -49,6 +49,6 @@ export class Movie {
     * The year the movie was released.
     * - Must be a non-null integer (e.g., 2024).
     */
-    @Column({ type: 'int', nullable: false })
-    release_year: number;
+    @Column({ name:'release_year', type: 'int', nullable: false })
+    releaseYear: number;
 }

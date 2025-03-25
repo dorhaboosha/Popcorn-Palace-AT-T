@@ -6,129 +6,100 @@
 * normalization (trimming/lowercasing), and error handling. The service interacts with the MovieRepository
 * to access the data layer and throws appropriate exceptions for invalid input or business rule violations.
 */
+
 import { Injectable, BadRequestException, NotFoundException, Inject } from "@nestjs/common";
 import { MovieRepository } from "./movie.repository";
 import { Movie } from "./movie.entity";
-
+import { MovieDto } from "./movie.dto";
 
 @Injectable()
-export class MovieService{
+export class MovieService {
     constructor(@Inject('MovieRepository') private readonly movieRepository: MovieRepository) {}
 
     /**
     * Adds a new movie to the repository.
     * 
     * - Trims and lowercases the title and genre.
-    * - Checks for duplicates by title and release year.
+    * - Checks for duplicates by title.
     * 
-    * @param newMovie - The movie to add (excluding ID).
-    * @returns A promise that resolves when the movie is successfully added.
+    * @param dto - The movie to add (validated by DTO).
     * @throws BadRequestException if a duplicate movie is found.
     */
-    async addNewMovie(newMovie: Omit<Movie, 'id'>): Promise<void> {
-        if (typeof newMovie.title === 'string') {
-            newMovie.title = newMovie.title.trim();
-            newMovie.title = newMovie.title.toLowerCase();
-        }
-        
-        if (typeof newMovie.genre === 'string') {
-            newMovie.genre = newMovie.genre.trim();
-            newMovie.genre = newMovie.genre.toLowerCase();
-        }
+    async addNewMovie(movieData: MovieDto): Promise<void> {
+        const movieTitle = movieData.title.trim().toLowerCase();
+        const movieGenre = movieData.genre.trim().toLowerCase();
 
-        const existingMovie = await this.movieRepository.fetchMovieByTitleAndReleaseYear(newMovie.title, newMovie.release_year);
-        
+        const existingMovie = await this.movieRepository.findMovieByTitle(movieTitle);
         if (existingMovie) {
-            throw new BadRequestException (`A movie titled "${newMovie.title}" already exists for year ${newMovie.release_year}.`);
+            throw new BadRequestException(`A movie titled "${movieTitle}" already exists.`);
         }
 
-        return this.movieRepository.addNewMovie(newMovie);
+        return this.movieRepository.addNewMovie({ title: movieTitle, genre: movieGenre, 
+            duration: movieData.duration,rating: movieData.rating, releaseYear: movieData.releaseYear});
     }
 
     /**
-    * Updates an existing movie's information by its ID.
+    * Updates an existing movie's information by its current title.
     * 
-    * - Validates that the ID is positive and the movie exists.
-    * - Requires at least one field to update.
-    * - Trims and lowercases the title and genre if provided.
+    * - Validates that the movie exists.
+    * - Checks for duplicate title if being changed.
+    * - Trims and lowercases string fields before update.
     * 
-    * @param id - The ID of the movie to update.
-    * @param movie - Partial movie fields to update.
-    * @returns A promise that resolves when the movie is updated.
-    * @throws BadRequestException if ID is invalid or no fields provided.
-    * @throws NotFoundException if the movie with the given ID does not exist.
+    * @param title - The current title of the movie.
+    * @param dto - The updated movie data.
+    * @throws BadRequestException if data is invalid or duplicate title found.
+    * @throws NotFoundException if the movie does not exist.
     */
-    async updateMovieInfo(id: number, movie: Partial<Movie>): Promise<void> {
-        if (!id || id <= 0) {
-            throw new BadRequestException("Invalid movie ID.");
+    async updateMovieInfo(title: string, movieData: MovieDto): Promise<void> {
+        const originalTitle = title.trim().toLowerCase();
+
+        const existingMovie = await this.movieRepository.findMovieByTitle(originalTitle);
+        if (!existingMovie) {
+            throw new NotFoundException(`Movie titled "${originalTitle}" not found.`);
         }
 
-        const movieExists = await this.movieRepository.fetchMovieById(id);
-        
-        if (!movieExists) {
-            throw new NotFoundException(`Movie with ID ${id} not found.`);
+        const updatedTitle = movieData.title.trim().toLowerCase();
+
+        // If title is being changed, check for conflicts
+        if (updatedTitle !== originalTitle) {
+            const duplicate = await this.movieRepository.findMovieByTitle(updatedTitle);
+            if (duplicate) {
+                throw new BadRequestException(`A movie titled "${updatedTitle}" already exists.`);
+            }
         }
 
-        if (Object.keys(movie).length === 0) {
-            throw new BadRequestException('No fields provided for update.');
-        }
-
-        const updatedMovie : Movie = { ...movieExists, ...movie};
-
-        if (typeof updatedMovie.title === 'string') {
-            updatedMovie.title = updatedMovie.title.trim();
-            updatedMovie.title = updatedMovie.title.toLowerCase();
-          }
-        
-          if (typeof updatedMovie.genre === 'string') {
-            updatedMovie.genre = updatedMovie.genre.trim();
-            updatedMovie.genre = updatedMovie.genre.toLowerCase();
-          }
-        
-        return this.movieRepository.updateMovieInfo(id, updatedMovie);
-
+        return this.movieRepository.updateMovieInfo(originalTitle, { title: updatedTitle, genre: movieData.genre.trim().toLowerCase(),
+            duration: movieData.duration, rating: movieData.rating, releaseYear: movieData.releaseYear});
     }
 
     /**
-    * Deletes a movie by its ID.
+    * Deletes a movie by its title.
     * 
-    * - Validates that the ID is positive.
-    * - Verifies that the movie exists before deleting.
-    * 
-    * @param id - The ID of the movie to delete.
-    * @returns A promise that resolves when the movie is deleted.
-    * @throws BadRequestException if the ID is invalid.
-    * @throws NotFoundException if the movie with the given ID does not exist.
+    * @param title - The title of the movie to delete.
+    * @throws NotFoundException if movie does not exist.
     */
-    async deleteMovie(id: number): Promise<void> {
-        if (!id || id <= 0) {
-            throw new BadRequestException("Invalid movie ID.");
+    async deleteMovie(title: string): Promise<void> {
+        const movieTitle = title.trim().toLowerCase();
+
+        const existing = await this.movieRepository.findMovieByTitle(movieTitle);
+        if (!existing) {
+            throw new NotFoundException(`Movie titled "${movieTitle}" not found.`);
         }
 
-        const movieExists = await this.movieRepository.fetchMovieById(id);
-
-        if (!movieExists) {
-            throw new NotFoundException(`Movie with ID ${id} not found.`);
-        }
-
-        return this.movieRepository.deleteMovie(id);
+        return this.movieRepository.deleteMovie(movieTitle);
     }
 
     /**
-    * Fetches all movies from the repository.
+    * Fetches all movies from the database.
     * 
-    * - Validates that at least one movie exists.
-    * 
-    * @returns A promise that resolves with an array of movies.
-    * @throws BadRequestException if no movies are found.
+    * @returns An array of movies.
+    * @throws BadRequestException if no movies exist.
     */
     async fetchAllMovies(): Promise<Movie[]> {
-        const movies = await this.movieRepository.fetchAllMovies();
-        
-        if (!movies || movies.length === 0 ) {
+        const movies = await this.movieRepository.getAllMovies();
+        if (!movies || movies.length === 0) {
             throw new BadRequestException("There are no movies.");
         }
-        
         return movies;
     }
 }

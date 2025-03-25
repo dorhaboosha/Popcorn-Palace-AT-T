@@ -16,8 +16,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ShowTimeController } from "./showTime.controller";
 import { ShowTimeService } from "./showTime.service";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { CreateShowTimeDto } from "./create-showTime.dto";
-import { UpdateShowTimeDto } from "./update-showTime.dto";
+import { ShowTimeDto } from "./showTime.dto";
 
 describe('ShowTimeController', () => {
     let controller: ShowTimeController;
@@ -29,189 +28,205 @@ describe('ShowTimeController', () => {
             fetchShowTimeById: jest.fn(),
             updateShowTimeInfo: jest.fn(),
             deleteShowTime: jest.fn()
-        }
+        };
 
-        const module: TestingModule = await Test.createTestingModule(
-            {controllers: [ShowTimeController], providers: [{provide: ShowTimeService, useValue: mockShowTimeService}]
-            }).compile();
+        const module: TestingModule = await Test.createTestingModule({
+            controllers: [ShowTimeController],
+            providers: [{ provide: ShowTimeService, useValue: mockShowTimeService }]
+        }).compile();
 
         controller = module.get<ShowTimeController>(ShowTimeController);
     });
 
     describe('AddNewShowTime', () => {
-        
+
         /**
         * Should add a new showtime and return a success message.
         */
         it('should add a new showtime successfully', async () => {
-            const showtime: CreateShowTimeDto = {movie_title: 'Movie test', movie_release_year: 2010,
-                theater: 'Theater test', start_time: '14:00', end_time: '16:00', price: 15.7};
-            
-            mockShowTimeService.addNewShowTime.mockResolvedValue(undefined);
+            const dto: ShowTimeDto = {
+                movieId: 1,
+                theater: 'Theater A',
+                startTime: '2025-03-25T10:00:00Z',
+                endTime: '2025-03-25T12:00:00Z',
+                price: 30
+            };
 
-            const result = await controller.addNewShowTime(showtime);
-            expect(result).toEqual({message: 'Showtime successfully added.'});
-            expect(mockShowTimeService.addNewShowTime).toHaveBeenCalledWith(showtime);
+            mockShowTimeService.addNewShowTime.mockResolvedValue({
+                id: 1,
+                ...dto
+            });
+
+            const result = await controller.addNewShowTime(dto);
+            expect(result).toEqual({
+                id: 1,
+                ...dto
+            });
         });
 
         /**
-        * Should throw BadRequestException if the input data is invalid.
+        * Should throw BadRequestException if the showtime is invalid or overlaps.
         */
-        it('should throw BadRequestException if data is invalid', async () =>{
-            const showtime: CreateShowTimeDto = {movie_title: '', movie_release_year: 2010, theater: '',
-                    start_time: '14:00', end_time: '16:00', price: 15.7};
+        it('should throw BadRequestException if invalid', async () => {
+            const dto: ShowTimeDto = {
+                movieId: 1,
+                theater: 'Theater A',
+                startTime: 'invalid',
+                endTime: 'invalid',
+                price: 0
+            };
 
-            mockShowTimeService.addNewShowTime.mockRejectedValue(new BadRequestException('Invalid input'));
+            mockShowTimeService.addNewShowTime.mockRejectedValue(new BadRequestException('Invalid showtime'));
 
-            await expect(controller.addNewShowTime(showtime)).rejects.toThrow(BadRequestException);
+            await expect(controller.addNewShowTime(dto)).rejects.toThrow(BadRequestException);
         });
 
         /**
-        * Should throw BadRequestException if a showtime with the same details already exists.
+        * Should throw NotFoundException if the movie ID is not found.
         */
-        it('should throw BadRequestException if there is a showtime with the same details', async () => {
-            const showtime: CreateShowTimeDto = {movie_title: 'movie test', movie_release_year: 2010, theater: 'theater test',
-                    start_time: '14:00', end_time: '16:00', price: 15.7};
-            
-            mockShowTimeService.addNewShowTime.mockRejectedValue(new BadRequestException('Duplicate showtime'));
-            await expect(controller.addNewShowTime(showtime)).rejects.toThrow(BadRequestException);
-        });
+        it('should throw NotFoundException if movie does not exist', async () => {
+            const dto: ShowTimeDto = {
+                movieId: 999,
+                theater: 'Theater A',
+                startTime: '2025-03-25T10:00:00Z',
+                endTime: '2025-03-25T12:00:00Z',
+                price: 30
+            };
 
-        /**
-        * Should throw NotFoundException if the movie is not found.
-        */
-        it('should throw NotFoundException if the movie is not found', async () => {
-            const showtime: CreateShowTimeDto = {movie_title: 'movie test', movie_release_year: 2010, theater: 'theater test',
-                    start_time: '14:00', end_time: '16:00', price: 15.7};
-            
             mockShowTimeService.addNewShowTime.mockRejectedValue(new NotFoundException('Movie not found'));
-            await expect(controller.addNewShowTime(showtime)).rejects.toThrow(NotFoundException);
+
+            await expect(controller.addNewShowTime(dto)).rejects.toThrow(NotFoundException);
         });
     });
 
-    describe('GetShowTimeById', () => {
-        
+    describe('fetchShowTimeById', () => {
+
         /**
-        * Should fetch and return showtime by valid ID.
+        * Should return the showtime if found.
         */
-        it('should fetch showtime by ID successfully', async () => {
+        it('should return showtime by ID', async () => {
             const id = 1;
-            const showtime = {id, theater: 'theater test', movie: {}, start_time: '14:00', end_time: '16:00', price: 15.7};
+            const showtime = {
+                id,
+                movieId: 1,
+                theater: 'Theater A',
+                startTime: '2025-03-25T10:00:00Z',
+                endTime: '2025-03-25T12:00:00Z',
+                price: 30
+            };
 
             mockShowTimeService.fetchShowTimeById.mockResolvedValue(showtime);
+
             const result = await controller.fetchShowTimeById(id);
             expect(result).toEqual(showtime);
         });
 
         /**
-        * Should throw BadRequestException if the ID is invalid.
+        * Should throw BadRequestException if ID is invalid.
         */
-        it('should throw BadRequestException if ID is invalid', async () => {
+        it('should throw BadRequestException for invalid ID', async () => {
             mockShowTimeService.fetchShowTimeById.mockRejectedValue(new BadRequestException('Invalid ID'));
+
             await expect(controller.fetchShowTimeById(0)).rejects.toThrow(BadRequestException);
         });
 
         /**
-        * Should throw NotFoundException if the showtime is not found.
+        * Should throw NotFoundException if showtime is not found.
         */
-        it('should throw NotFoundException if showtime is not found', async () => {
-            mockShowTimeService.fetchShowTimeById.mockRejectedValue(new NotFoundException('Showtime not found'));
-            await expect(controller.fetchShowTimeById(999)).rejects.toThrow(NotFoundException);
-        });
+        it('should throw NotFoundException if showtime does not exist', async () => {
+            mockShowTimeService.fetchShowTimeById.mockRejectedValue(new NotFoundException('Not found'));
 
-        /**
-        * Should throw NotFoundException if the associated movie is not found.
-        */
-        it('should throw NotFoundException if movie is not found', async () => {
-            mockShowTimeService.fetchShowTimeById.mockRejectedValue(new NotFoundException('Movie not found'));
-            await expect(controller.fetchShowTimeById(1)).rejects.toThrow(NotFoundException);
+            await expect(controller.fetchShowTimeById(999)).rejects.toThrow(NotFoundException);
         });
     });
 
-    describe('UpdateShowTime', () => {
+    describe('updateShowTimeInfo', () => {
+
         /**
-        * Should update the showtime with the given ID and data.
+        * Should update an existing showtime and return success message.
         */
         it('should update showtime successfully', async () => {
             const id = 1;
-            const update: UpdateShowTimeDto = {price: 30.6};
-            
+            const dto: ShowTimeDto = {
+                movieId: 1,
+                theater: 'Updated Theater',
+                startTime: '2025-03-25T13:00:00Z',
+                endTime: '2025-03-25T15:00:00Z',
+                price: 35
+            };
+
             mockShowTimeService.updateShowTimeInfo.mockResolvedValue(undefined);
 
-            const result = await controller.updateShowTimeInfo(id, update);
-            expect(result).toEqual({message: `Showtime with ID ${id} successfully updated.`});
+            const result = await controller.updateShowTimeInfo(id, dto);
+            expect(result).toEqual({ message: `Showtime with ID ${id} successfully updated.` });
         });
 
         /**
-        * Should throw BadRequestException if the ID is invalid.
+        * Should throw BadRequestException if data is invalid.
         */
-        it('shpould throw BadRequestException if ID is invalid', async () => {
-            const update: UpdateShowTimeDto = {price: 25.8};
-
-            mockShowTimeService.updateShowTimeInfo.mockRejectedValue(new BadRequestException('Invalid ID'));
-            await expect(controller.updateShowTimeInfo(0, update)).rejects.toThrow(BadRequestException);
-        });
-
-        /**
-        * Should throw BadRequestException if update data is invalid or empty.
-        */
-        it('should throw BadRequestException if data is invalid', async () => {
+        it('should throw BadRequestException for invalid input', async () => {
             const id = 1;
-            const update: UpdateShowTimeDto = {};
+            const dto: ShowTimeDto = {
+                movieId: 1,
+                theater: '',
+                startTime: '',
+                endTime: '',
+                price: 0
+            };
 
-            mockShowTimeService.updateShowTimeInfo.mockRejectedValue(new BadRequestException('Invalid data'));
-            await expect(controller.updateShowTimeInfo(id, update)).rejects.toThrow(BadRequestException);
+            mockShowTimeService.updateShowTimeInfo.mockRejectedValue(new BadRequestException('Invalid input'));
+
+            await expect(controller.updateShowTimeInfo(id, dto)).rejects.toThrow(BadRequestException);
         });
 
         /**
-        * Should throw NotFoundException if the showtime to update is not found.
+        * Should throw NotFoundException if showtime or movie is not found.
         */
-        it('should throw NotFoundException if showtime is not found', async () => {
-            const id = 999;
-            const update: UpdateShowTimeDto = {price: 25.8};
-
-            mockShowTimeService.updateShowTimeInfo.mockRejectedValue(new NotFoundException('Showtime not found'));
-            await expect(controller.updateShowTimeInfo(id, update)).rejects.toThrow(NotFoundException);
-        });
-
-        /**
-        * Should throw NotFoundException if the new movie title does not match any existing movie.
-        */
-        it('should throw NotFoundException if movie is not found', async () => {
+        it('should throw NotFoundException if movie or showtime is not found', async () => {
             const id = 1;
-            const update: UpdateShowTimeDto = {movie_title: 'movie', movie_release_year: 2010};
+            const dto: ShowTimeDto = {
+                movieId: 999,
+                theater: 'Test',
+                startTime: '2025-03-25T10:00:00Z',
+                endTime: '2025-03-25T12:00:00Z',
+                price: 30
+            };
 
             mockShowTimeService.updateShowTimeInfo.mockRejectedValue(new NotFoundException('Movie not found'));
-            await expect(controller.updateShowTimeInfo(id, update)).rejects.toThrow(NotFoundException);
+
+            await expect(controller.updateShowTimeInfo(id, dto)).rejects.toThrow(NotFoundException);
         });
     });
 
-    describe('DeleteShowTime', () => {
+    describe('deleteShowTime', () => {
+
         /**
-        * Should delete a showtime by ID and return a success message.
+        * Should delete a showtime and return success message.
         */
-        it('should delete showtime successfully', async () => {
+        it('should delete a showtime', async () => {
             const id = 1;
 
             mockShowTimeService.deleteShowTime.mockResolvedValue(undefined);
 
             const result = await controller.deleteShowTime(id);
-            expect(result).toEqual({message: `Showtime with ID ${id} successfully deleted.`});
+            expect(result).toEqual({ message: `Showtime with ID ${id} successfully deleted.` });
         });
 
         /**
         * Should throw BadRequestException if ID is invalid.
         */
-        it('should throw BadRequestException if ID is invalid', async () => {
+        it('should throw BadRequestException for invalid ID', async () => {
             mockShowTimeService.deleteShowTime.mockRejectedValue(new BadRequestException('Invalid ID'));
+
             await expect(controller.deleteShowTime(0)).rejects.toThrow(BadRequestException);
         });
-        
+
         /**
         * Should throw NotFoundException if showtime does not exist.
         */
-        it('should throw NotFoundException if showtime is not found', async () => {
+        it('should throw NotFoundException if showtime does not exist', async () => {
             mockShowTimeService.deleteShowTime.mockRejectedValue(new NotFoundException('Showtime not found'));
+
             await expect(controller.deleteShowTime(999)).rejects.toThrow(NotFoundException);
         });
     });
