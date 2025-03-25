@@ -64,32 +64,31 @@ Test coverage includes:
 
 - 🎬 MovieService and MovieController
 - 🎟️ ShowTimeService and ShowTimeController
-- 🧾 TicketService and TicketController
+- 🧾 BookingService and BookingController
 
 ---
 
 ## 6. API Testing
 
-You can test the API using Postman. I know that the API Endpoints are different from what you gave us in the README.md file. I just had a situation where I had to go to Miluim and when the situation was resolved, I worked straight away on the work to catch up and noticed too late that this is how you listed the API Endpoints. I hope what I did is okay.
-The following routes are available:
+You can test the API using Postman. The following routes are available:
 
 ### 🎬 Movie Routes
 
-- `POST /movie/AddNewMovie`
-- `GET /movie/GetAllMovies`
-- `PATCH /movie/UpdateMovie/:id`
-- `DELETE /movie/DeleteMovie/:id`
+- `POST /movies`
+- `GET /movies/all`
+- `POST /movies/update/:title`
+- `DELETE /movies/:title`
 
 ### 🎟️ ShowTime Routes
 
-- `POST /showtime/AddNewShowTime`
-- `GET /showtime/FetchShowTime/:id`
-- `PATCH /showtime/UpdateShowTime/:id`
-- `DELETE /showtime/DeleteShowTime/:id`
+- `POST /showtimes/`
+- `GET /showtimes/:id`
+- `POST /showtimes/update/:id`
+- `DELETE /showtimes/:id`
 
-### 🧾 Ticket Routes
+### 🧾 Booking Routes
 
-- `POST /ticket/AddNewTicket`
+- `POST /bookings`
 
 > All endpoints accept and return JSON.
 
@@ -100,20 +99,18 @@ The following routes are available:
 - The project uses **NestJS** with **TypeScript**.
 - Persistence is handled using **PostgreSQL** with **plain SQL** via **TypeORM's DataSource**.
 - Input validation and error handling are implemented using `class-validator` and standard NestJS exceptions.
-- Tickets are created by providing:
-  - Movie Title
-  - Movie Theater
-  - Movie Start Time
-  - Customer Name
++ Bookings are created by providing:
+  - Showtime ID
+  - User ID (UUID)
   - Seat Number (1–100)
-- Ticket creation ensures:
-  - Movie and Showtime match.
-  - Seat is not already taken.
-  - Theater is not full.
-  - No duplicate customer-seat bookings.
++ Booking creation ensures:
+- The showtime exists and has a valid movie assigned.
+- The seat is not already taken.
+- The theater is not full.
+- No duplicate bookings from the same user for the same seat.
 
 ---
 
 ## 8. Author
 
-This project is part of the **Movie Ticket Booking System - Popcorn Palace** backend assignment for AT&T.
+This project is part of the **Movie Ticket Booking System - Popcorn Palace** backend assignment.
