@@ -70,7 +70,8 @@ Test coverage includes:
 
 ## 6. API Testing
 
-You can test the API using Postman. The following routes are available:
+You can test the API using Postman. I know that the API Endpoints are different from what you gave us in the README.md file. I just had a situation where I had to go to Miluim and when the situation was resolved, I worked straight away on the work to catch up and noticed too late that this is how you listed the API Endpoints. I hope what I did is okay.
+The following routes are available:
 
 ### 🎬 Movie Routes
 
